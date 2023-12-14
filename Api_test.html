@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css">
+    <title>Your Website Title</title>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBAUdgvJJYnLe4NPR3hRMT347vn6Gt12og&callback=initMap" async defer></script>
+    <script>
+        function initMap() {
+            var defaultLocation = { lat: 44.5950, lng: -123.3926 };
+            var mapOptions = {
+                center: defaultLocation,
+                zoom: 10,
+            };
+
+            var map = new google.maps.Map(document.getElementById('map'), mapOptions);
+
+            var marker = new google.maps.Marker({
+                position: defaultLocation,
+                map: map,
+                title: 'Idiotville, Oregon'
+            });
+ 
+            document.getElementById('LocationForm').addEventListener('submit', function (event) {
+                event.preventDefault();
+                var latInput = document.getElementById('latInput').value;
+                var lngInput = document.getElementById('lngInput').value;
+
+                if (latInput && lngInput && !isNaN(latInput) && !isNaN(lngInput) && latInput<=90 && latInput>=-90 && lngInput<=180 && lngInput>= -180) {
+                    var newLocation = { lat: parseFloat(latInput), lng: parseFloat(lngInput) };
+
+                    map.setCenter(newLocation);
+                    marker.setPosition(newLocation);
+                } else {
+                    alert('Please enter valid latitude and longitude values.');
+                }
+            });
+        }
+    </script>
+</head>
+
+<body>
+
+    <header>
+        <h1>This is a test ._.</h1>
+    </header>
+
+    <section>
+        <form id="LocationForm">
+            <label for="latInput">Latitude:</label>
+            <input type="text" id="latInput" placeholder="Enter latitude">
+
+            <label for="lngInput">Longitude:</label>
+            <input type="text" id="lngInput" placeholder="Enter longitude">
+
+            <button type="submit">Update Map</button>
+        </form>
+
+        <div id="map" style="height: 400px;"></div>
+    </section>
+
+</body>
+
+</html>
