@@ -1,0 +1,41 @@
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+
+const char* ssid = "House";
+const char* password = "FlyingMonkeys";
+
+const int ledPin = 2;
+
+AsyncWebServer server(80);
+
+void setup() {
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW);
+
+  Serial.begin(9600);
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+  Serial.print("ESP32 IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/led/on", HTTP_GET, [](AsyncWebServerRequest *request){
+    digitalWrite(ledPin, HIGH);
+    request->send(200, "text/plain", "LED is ON");
+  });
+
+  server.on("/led/off", HTTP_GET, [](AsyncWebServerRequest *request){
+    digitalWrite(ledPin, LOW);
+    request->send(200, "text/plain", "LED is OFF");
+  });
+
+  server.begin();
+}
+
+void loop() {}
+
+// 192.168.50.135
