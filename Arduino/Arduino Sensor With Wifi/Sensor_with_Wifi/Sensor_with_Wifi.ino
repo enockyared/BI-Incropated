@@ -1,3 +1,8 @@
+
+// #include "src/config.h"
+// #include "src/sensitive.h"
+// #include "src/certs.h"
+// #include "src/serializer.h"
 #include "WiFiS3.h"
 #include <LPS22HHSensor.h>
 #include <STTS751Sensor.h>

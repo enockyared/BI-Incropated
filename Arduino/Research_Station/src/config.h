@@ -1,7 +1,7 @@
 #pragma once
 
 // wireless config
-#define WIRELESS_SSID "UCB Wireless"
+#define WIRELESS_SSID "House"
 
 // MQTT config
 #define MQTT_SERVER "superdomain.asuscomm.com"
