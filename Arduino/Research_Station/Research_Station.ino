@@ -2,6 +2,7 @@
 #include "src/sensitive.h"
 #include "src/certs.h"
 #include "src/serializer.h"
+#include "src/cbor.h"
 
 #include <LPS22HHSensor.h>
 #include <STTS751Sensor.h>
@@ -38,6 +39,8 @@ SoftwareSerial gpsSerial(GPS_RX_PIN,13);
 LPS22HHSensor PressTemp(&DEV_I2C);
 HTS221Sensor HumTemp(&DEV_I2C);
 STTS751Sensor Temp3(&DEV_I2C);
+
+CBOR Encoder
 
 WiFiSSLClient net;
 PubSubClient client(net);
@@ -252,3 +255,4 @@ void displayToSerial(int ID, float weatherData[], String GPSData[])
   Serial.println("Latitude: " + String(GPSData[0]));
   Serial.println("Longitude: " + String(GPSData[1]));
 }
+
