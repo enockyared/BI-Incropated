@@ -27,7 +27,7 @@ def on_closing():
         root.destroy()
 
 # Configure the serial port
-ser = serial.Serial('COM3', 9600)  # Change 'COM3' to the appropriate port
+ser = serial.Serial('COM11', 9600)  # Change 'COM3' to the appropriate port
 time.sleep(2)  # Wait for the serial connection to initialize
 
 # Create the main window

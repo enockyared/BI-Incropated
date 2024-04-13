@@ -40,13 +40,15 @@ LPS22HHSensor PressTemp(&DEV_I2C);
 HTS221Sensor HumTemp(&DEV_I2C);
 STTS751Sensor Temp3(&DEV_I2C);
 
-CBOR Encoder
+//CBOR Encoder
 
 WiFiSSLClient net;
 PubSubClient client(net);
 
+
 void setup() 
 {
+  tempconfig();
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
   Serial.begin(9600);
@@ -59,7 +61,12 @@ void setup()
   HumTemp.Enable();
   Temp3.begin();
   Temp3.Enable();
-  prompt();
+  if(id == -1){
+    prompt();
+  }
+  else{
+  connectToWifi(SSID, password);
+  }
   connectToMQTT();
 }
 
@@ -79,6 +86,13 @@ void checkIfConnected(){
   client.loop();
 }
 
+void tempconfig(){
+  
+//temp config
+id = -1;
+SSID = "";
+password = "";
+}
 void prompt()
 {
   delay(1000);
@@ -209,11 +223,18 @@ void readGPSData(String GPSData[])
       float minLon = fmod(longitude, 100.0);
       float secLat = (minLat - int(minLat)) * 60.0;
       float secLon = (minLon - int(minLon)) * 60.0;
-      GPSData[0] = String(degLat) + "° " + String(int(minLat)) + "' " + String(secLat, 5) + "\" " + ((latitude > 0) ? "N" : "S");
-      GPSData[1] = String(degLon) + "° " + String(int(minLon)) + "' " + String(secLon, 5) + "\" " + ((longitude > 0) ? "W" : "E");      
+      if(latitude > 0 && longitude > 0){
+        GPSData[0] = String(dms_to_dd(degLat, minLat, secLat));
+        GPSData[1] = String(-dms_to_dd(degLon, minLon, secLon));
+      }
+
     }
   }
   
+}
+float dms_to_dd(float degrees, float minutes, float seconds) {
+    float dd = degrees + (minutes / 60.0) + (seconds / 3600.0);
+    return dd;
 }
 
 float parseCoordinate(String data, char separator, int index) 
