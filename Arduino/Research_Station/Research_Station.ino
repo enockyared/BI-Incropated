@@ -32,7 +32,7 @@ float weatherData[3];
 char utilstr[128];
 String SSID = "";
 String password = "";
-String GPSData[2];
+String GPSData[2] = {"39.86", "-104.99"};
 
 // Components
 SoftwareSerial gpsSerial(GPS_RX_PIN,13);
@@ -61,7 +61,6 @@ void setup()
   HumTemp.Enable();
   Temp3.begin();
   Temp3.Enable();
-  Encoder.assign_input_buffer((uint8_t *)(utilstr), 128);
   if(id == -1){
     prompt();
   }
@@ -77,7 +76,9 @@ void loop() {
   readWeatherData(weatherData);
   readGPSData(GPSData);
   displayToSerial(id, weatherData, GPSData);
-  deliver(id, weatherData, GPSData);
+  if(!GPSData[0].isEmpty()){
+    deliver(id, weatherData, GPSData);
+  }
   delay(MeasureDelay);
 }
 
@@ -90,18 +91,20 @@ void checkIfConnected(){
 void tempconfig(){
   
 //temp config
-id = -1;
+id = -0001;
 SSID = "";
 password = "";
 }
 void prompt()
 {
   delay(1000);
-  Serial.println("Awaiting ID");
-  while (Serial.available() <= 0 ) {
-    delay(100);
-  }
-  id = Serial.readStringUntil('\n').toInt(); // Read the data until a newline character is received
+  do{
+    Serial.println("Awaiting ID; must be be 4 integers 1000-9999");
+    while (Serial.available() <= 0 ) {
+      delay(100);
+    }
+    id = Serial.readStringUntil('\n').toInt(); // Read the data until a newline character is received
+  }while(id < 1000 || id > 9999);
   Serial.println("Awaiting SSID");
   while (Serial.available() <= 0 ) {
     delay(100);
@@ -256,20 +259,25 @@ float parseCoordinate(String data, char separator, int index)
 }
 
 void deliver(int ID, float weatherData[], String GPSData[]){
+  Encoder.assign_input_buffer((uint8_t *)(utilstr), 128);
+  char Lat[GPSData[0].length() + 1];
+  GPSData[0].toCharArray(Lat, GPSData[0].length() + 1);
+  char Lon[GPSData[1].length() + 1];
+  GPSData[1].toCharArray(Lon, GPSData[1].length() + 1);
   Encoder.declare_variable_length_map();
-      Encoder.write_utf8_string("ID", 2); Encoder.write_integer_value(ID, true);
+      Encoder.write_utf8_string("ID", 2); 
+      Encoder.write_integer_value(ID, true);
       Encoder.write_utf8_string("Measurements", 12);
       Encoder.declare_variable_length_map();
-          Encoder.write_utf8_string("la", 2); Encoder.write_utf8_string(GPSData[0].c_str(), GPSData[0].length());
-          Encoder.write_utf8_string("lo", 2); Encoder.write_float_value(GPSData[1].c_str(), GPSData[1].length());
+          Encoder.write_utf8_string("la", 2); Encoder.write_utf8_string(Lat, sizeof(Lat)-1);
+          Encoder.write_utf8_string("lo", 2); Encoder.write_utf8_string(Lon, sizeof(Lon)-1);
           Encoder.write_utf8_string("hu", 2); Encoder.write_float_value(weatherData[0]);
           Encoder.write_utf8_string("pr", 2); Encoder.write_float_value(weatherData[1]);
           Encoder.write_utf8_string("te", 2); Encoder.write_float_value(weatherData[2]);
-          Encoder.write_utf8_string("ST", 2); Encoder.write_integer_value(1, true);
+          Encoder.write_utf8_string("ST", 2); Encoder.write_integer_value(0, true);
       Encoder.terminate_variable_length_object();
   Encoder.terminate_variable_length_object();
-  utilstr[Encoder.report_size()] = '\0';
-  client.publish("/test/cbor", utilstr);
+  client.publish("/test/cbor", (const uint8_t *)(utilstr), Encoder.report_size());
 }
 
 void displayToSerial(int ID, float weatherData[], String GPSData[])
