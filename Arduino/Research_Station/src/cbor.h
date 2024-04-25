@@ -90,7 +90,7 @@ class CBOR {
         bool declare_fixed_length_map  (size_t num_elements);
         bool declare_variable_length_array();
         bool declare_variable_length_map();
-        bool terminate_varaible_length_object();
+        bool terminate_variable_length_object();
 };
 
 #endif //CBOR_H_JAVO9205_AT_COLORADO_DOT_EDU

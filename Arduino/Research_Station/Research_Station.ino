@@ -40,7 +40,7 @@ LPS22HHSensor PressTemp(&DEV_I2C);
 HTS221Sensor HumTemp(&DEV_I2C);
 STTS751Sensor Temp3(&DEV_I2C);
 
-//CBOR Encoder
+CBOR Encoder;
 
 WiFiSSLClient net;
 PubSubClient client(net);
@@ -61,6 +61,7 @@ void setup()
   HumTemp.Enable();
   Temp3.begin();
   Temp3.Enable();
+  Encoder.assign_input_buffer((uint8_t *)(utilstr), 128);
   if(id == -1){
     prompt();
   }
@@ -255,16 +256,20 @@ float parseCoordinate(String data, char separator, int index)
 }
 
 void deliver(int ID, float weatherData[], String GPSData[]){
-  String deliverString = "DeviceID: " + String(ID);
-  deliverString += ", la: " + GPSData[0];
-  deliverString += ", lo: " + GPSData[1];
-  deliverString += ", hu: " + String(weatherData[0], 2);
-  deliverString += ", pr: " + String(weatherData[1], 2);
-  deliverString += ", te: " + String(weatherData[2], 2);
-  deliverString.toCharArray(utilstr, 128);
-    Serial.readBytesUntil('\n',utilstr,128);
-    client.publish("/test/topic", utilstr); 
-
+  Encoder.declare_variable_length_map();
+      Encoder.write_utf8_string("ID", 2); Encoder.write_integer_value(ID, true);
+      Encoder.write_utf8_string("Measurements", 12);
+      Encoder.declare_variable_length_map();
+          Encoder.write_utf8_string("la", 2); Encoder.write_utf8_string(GPSData[0].c_str(), GPSData[0].length());
+          Encoder.write_utf8_string("lo", 2); Encoder.write_float_value(GPSData[1].c_str(), GPSData[1].length());
+          Encoder.write_utf8_string("hu", 2); Encoder.write_float_value(weatherData[0]);
+          Encoder.write_utf8_string("pr", 2); Encoder.write_float_value(weatherData[1]);
+          Encoder.write_utf8_string("te", 2); Encoder.write_float_value(weatherData[2]);
+          Encoder.write_utf8_string("ST", 2); Encoder.write_integer_value(1, true);
+      Encoder.terminate_variable_length_object();
+  Encoder.terminate_variable_length_object();
+  utilstr[Encoder.report_size()] = '\0';
+  client.publish("/test/cbor", utilstr);
 }
 
 void displayToSerial(int ID, float weatherData[], String GPSData[])
