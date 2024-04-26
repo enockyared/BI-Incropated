@@ -24,7 +24,13 @@
 #define DEV_I2C Wire
 #endif
 #define SerialPort Serial
+#define Pressure 0
+#define Humidity 1
+#define Temperature 2
+#define IP 3
+#define Name 4
 
+int state = Name;
 int id = -1;
 int timeOut = -1;
 int status = WL_IDLE_STATUS;
@@ -32,7 +38,10 @@ float weatherData[3];
 char utilstr[128];
 String SSID = "";
 String password = "";
+String name = "";
+String ipAddress = "";
 String GPSData[2] = {"39.86", "-104.99"};
+float rawGPSData[2] = {0.0, 0.0};
 
 // Components
 SoftwareSerial gpsSerial(GPS_RX_PIN,13);
@@ -74,10 +83,15 @@ void loop() {
   // put your main code here, to run repeatedly:
   checkIfConnected();
   readWeatherData(weatherData);
-  readGPSData(GPSData);
-  displayToSerial(id, weatherData, GPSData);
-  if(!GPSData[0].isEmpty()){
-    deliver(id, weatherData, GPSData);
+  // readGPSData();
+  readRawGPSData();
+  // displayToSerial(id, weatherData, GPSData);
+  displayToSerialRaw(id, weatherData);
+  // if(!GPSData[0].isEmpty()){
+  //   deliver(id, weatherData, GPSData);
+  // }
+  if(!rawGPSData[0] <0.001 && rawGPSData[1] > 0.01 && rawGPSData[0] > 0.01){
+    deliverRaw(id, weatherData, rawGPSData);
   }
   delay(MeasureDelay);
 }
@@ -91,9 +105,10 @@ void checkIfConnected(){
 void tempconfig(){
   
 //temp config
-id = -0001;
+id = -1;
 SSID = "";
 password = "";
+name = "";
 }
 void prompt()
 {
@@ -115,6 +130,11 @@ void prompt()
     delay(100);
   }
   password = Serial.readStringUntil('\n');
+  Serial.println("Awaiting System Name");
+  while (Serial.available() <= 0 ) { 
+    delay(100);
+  }
+  name = Serial.readStringUntil('\n');
   connectToWifi(SSID, password);
 }
 
@@ -140,8 +160,10 @@ void connectToWifi(String SSID, String password)
   }
     Serial.println(".");
 
-  if(WiFi.status() == WL_CONNECTED)
+  if(WiFi.status() == WL_CONNECTED){
     Serial.println("Connected!");
+    ipAddress = WiFi.gatewayIP().toString();
+  }
   else
     prompt();
 }
@@ -213,7 +235,20 @@ void readWeatherData(float weatherData[])
   weatherData[2] = temperature;
 }
 
-void readGPSData(String GPSData[])
+void readRawGPSData()
+{
+  if (gpsSerial.available() > 0) {
+    String sentence = gpsSerial.readStringUntil('\n');
+    if (sentence.startsWith("$GPGGA")) {
+      //Parse the sentence to extract latitude and longitude
+      rawGPSData[0] = parseCoordinate(sentence, ',', 2);
+      rawGPSData[1] = parseCoordinate(sentence, ',', 4);
+    }
+  }
+  
+}
+
+void readGPSData()
 {
   if (gpsSerial.available() > 0) {
     String sentence = gpsSerial.readStringUntil('\n');
@@ -236,6 +271,7 @@ void readGPSData(String GPSData[])
   }
   
 }
+
 float dms_to_dd(float degrees, float minutes, float seconds) {
     float dd = degrees + (minutes / 60.0) + (seconds / 3600.0);
     return dd;
@@ -280,6 +316,61 @@ void deliver(int ID, float weatherData[], String GPSData[]){
   client.publish("/test/cbor", (const uint8_t *)(utilstr), Encoder.report_size());
 }
 
+void deliverRaw(int ID, float weatherData[], float rawGPSData[]){
+  String Data = "";
+  switch(state){
+    case Pressure:
+      Data = String(weatherData[1]);
+      break;
+    case Humidity:
+      Data = String(weatherData[0]);
+      break;
+    case Temperature:
+      Data = String(weatherData[2]);
+      break;
+    case IP:
+      Data = ipAddress;
+      break;
+    case Name:
+      Data = name;
+      break;
+  }
+  char dataString[Data.length() + 1];
+  Data.toCharArray(dataString, Data.length() + 1);
+  Encoder.assign_input_buffer((uint8_t *)(utilstr), 128);
+  Encoder.declare_variable_length_map();
+      Encoder.write_utf8_string("ID", 2); 
+      Encoder.write_integer_value(ID, true);
+      Encoder.write_utf8_string("Measurements", 12);
+      Encoder.declare_variable_length_map();
+          Encoder.write_utf8_string("la", 2); Encoder.write_float_value(rawGPSData[0]);
+          Encoder.write_utf8_string("lo", 2); Encoder.write_float_value(rawGPSData[1]);
+          Encoder.write_utf8_string("da", 2); Encoder.write_utf8_string(dataString, sizeof(dataString)-1);
+          Encoder.write_utf8_string("ST", 2); Encoder.write_integer_value(state, true);
+      Encoder.terminate_variable_length_object();
+  Encoder.terminate_variable_length_object();
+  client.publish("/test/cbor", (const uint8_t *)(utilstr), Encoder.report_size());
+
+  switch(state){
+    case Pressure:
+      state = Humidity;
+      break;
+    case Humidity:
+      state = Temperature;
+      break;
+    case Temperature:
+      state = IP;
+      break;
+    case IP:
+      state = Pressure;
+      break;
+    case Name:
+      state = Pressure;
+      break;
+  }
+}
+
+
 void displayToSerial(int ID, float weatherData[], String GPSData[])
 {
   Serial.println("DeviceID: " + String(id));
@@ -288,5 +379,14 @@ void displayToSerial(int ID, float weatherData[], String GPSData[])
   Serial.println("Temperature: " + String(weatherData[2]));
   Serial.println("Latitude: " + String(GPSData[0]));
   Serial.println("Longitude: " + String(GPSData[1]));
+}
+void displayToSerialRaw(int ID, float weatherData[])
+{
+  Serial.println("DeviceID: " + String(id));
+  Serial.println("Humidity: " + String(weatherData[0]));
+  Serial.println("Pressure: " + String(weatherData[1]));
+  Serial.println("Temperature: " + String(weatherData[2]));
+  Serial.println("Latitude: " + String(rawGPSData[0]));
+  Serial.println("Longitude: " + String(rawGPSData[1]));
 }
 
