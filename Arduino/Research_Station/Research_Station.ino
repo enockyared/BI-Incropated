@@ -1,3 +1,22 @@
+/*
+ *  This code flashes a WiFi capable Arduino Uno r4 to run as a headless research station.
+ *  This device requires a X-NUCLEO-IKS01A3 shield plugged into the device, along with a
+ *   GPS-19166 GPS module plugged into ground, 3.3v, and pin 8 on the shield.
+ *  
+ *  It first prompts the user via Serial (9600 Baud rate) for an ID (range 1000-9999), 
+ *  SSID, network password, and device name; and then if the device is able to connect with
+ *  that info to both WiFi and MQTT it will start sending measured location and atmospheric
+ *  data to the given MQTT server. This prompt can be bypassed by filling out the tempconfig()
+ *  function beforehand. 
+ *  
+ *  The data sent can be pressure, temperature, and humidity data; along 
+ *  with the device's IP address and given name. It also delivers gps data measured by a connected
+ *  GPS Module. The delivered data can be chosen by the state variable, using the 5 given message 
+ *  type definitions below. The message will always include the GPS Data.
+ *
+ *  Sent GPS data must be converted from DMS to DD to be used in the database. The data is also converted
+ *  When displayed over serial.
+ */
 #include "src/config.h"
 #include "src/sensitive.h"
 #include "src/certs.h"
@@ -13,7 +32,6 @@
 
 #define GPS_RX_PIN 8
 #define BAUD_RATE 9600
-#define MeasureDelay 1000
 #ifdef ARDUINO_SAM_DUE
 #define DEV_I2C Wire1
 #elif defined(ARDUINO_ARCH_STM32)
@@ -24,23 +42,36 @@
 #define DEV_I2C Wire
 #endif
 #define SerialPort Serial
+
+//Edit to change the time between message pulses
+#define MeasureDelay 1000
+
+//Below are the message types being sent
 #define Pressure 0
 #define Humidity 1
 #define Temperature 2
 #define IP 3
 #define Name 4
 
-int state = Name;
-int id = -1;
+//Below are variables which assure the device connects to the internet successfully
 int timeOut = -1;
 int status = WL_IDLE_STATUS;
+
+//Change state to change message type
+int state = Name;
+
+//change to alter where the device sends messages to
+char* topicPath = "/test/cbor";
+
+//Below are the variables used for sending and displaying data
+int id = -1;
 float weatherData[3];
-char utilstr[128];
+float GPSData[2] = {0.0, 0.0};
 String SSID = "";
 String password = "";
 String name = "";
 String ipAddress = "";
-float GPSData[2] = {0.0, 0.0};
+char utilstr[128];
 
 // Components
 SoftwareSerial gpsSerial(GPS_RX_PIN,13);
@@ -48,12 +79,12 @@ LPS22HHSensor PressTemp(&DEV_I2C);
 HTS221Sensor HumTemp(&DEV_I2C);
 STTS751Sensor Temp3(&DEV_I2C);
 
+//Encoding and communication components
 CBOR Encoder;
-
 WiFiSSLClient net;
 PubSubClient client(net);
 
-
+//Runs once on power-on. Sets up all measurement devices, and connects to wifi and MQTT. Promts for setup info if needed.
 void setup() 
 {
   tempconfig();
@@ -78,26 +109,22 @@ void setup()
   connectToMQTT();
 }
 
+//Runs continuously while the device has power. Reads in data and publishes it to MQTT and Serial.
 void loop() 
 {
-  // put your main code here, to run repeatedly:
+  //First makes sure the device is connected to WiFi and MQTT.
   checkIfConnected();
-  readWeatherData(weatherData);
+  readWeatherData();
   readGPSData();
   displayToSerial();
+  //cleans out some common GPS errors before delivering data
   if(!GPSData[0] <0.001 && GPSData[1] > 0.01 && GPSData[0] != GPSData[1]){
     deliver();
   }
   delay(MeasureDelay);
 }
 
-void checkIfConnected()
-{
-  if(!client.connected())
-    reconnectToMQTT();
-  client.loop();
-}
-
+//preloads the device with given config data. disable by setting id to -1
 void tempconfig()
 {
   //temp config
@@ -107,6 +134,7 @@ void tempconfig()
   name = "Elevator Test";
 }
 
+//Prompts the user over Serial for config data and connects to WiFi with it.
 void prompt()
 {
   delay(1000);
@@ -135,6 +163,7 @@ void prompt()
   connectToWifi(SSID, password);
 }
 
+//Attempts to connect to WiFi 10 times before timing out and reprompting for config data.
 void connectToWifi(String SSID, String password)
 {
   char ssid[SSID.length() + 1];
@@ -165,6 +194,7 @@ void connectToWifi(String SSID, String password)
     prompt();
 }
 
+//Generic callback function for recieving data from MQTT Server from the given topic.
 void callback(char* topic, byte* payload, unsigned int length) 
 {
   Serial.print("Message received on topic");
@@ -177,6 +207,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   Serial.println();
 }
 
+//Connects to MQTT with the server and port and certificate given in the config.h and certs.h files
 void connectToMQTT()
 {
   // Set server and port
@@ -187,6 +218,15 @@ void connectToMQTT()
   net.setCACert(rootCACertificate);
 }
 
+//Checks to see if the MQTT Client is connected. If not it reconnects to MQTT
+void checkIfConnected()
+{
+  if(!client.connected())
+    reconnectToMQTT();
+  client.loop();
+}
+
+//reconnects to MQTT if not connected, and sends a message to the broker when connected.
 void reconnectToMQTT() 
 {
   while(!client.connected()) 
@@ -201,7 +241,7 @@ void reconnectToMQTT()
     if(client.connect("ESP32Client", MQTT_USER, MQTT_PASS)) 
     {
       Serial.println("connected");
-      client.publish("/test", "Hello from ESP32!!!"); 
+      client.publish("/station/connect", "Hello from the field"); 
       client.subscribe("/in"); 
     }
     else 
@@ -214,24 +254,26 @@ void reconnectToMQTT()
   }
 }
 
-void readWeatherData(float weatherData[])
+//reads in humidity, pressure, and temperature data into weatherData using their defined state values
+void readWeatherData()
 {
- float humidity = 0;
-  HumTemp.GetHumidity(&humidity);
-
-  // Read pressure and temperature.
+  // Read pressure
   float pressure = 0;
   PressTemp.GetPressure(&pressure);
+
+ float humidity = 0;
+  HumTemp.GetHumidity(&humidity);
 
   //Read temperature
   float temperature = 0;
   Temp3.GetTemperature(&temperature);
 
-  weatherData[0] = humidity;
-  weatherData[1] = pressure;
-  weatherData[2] = temperature;
+  weatherData[Pressure] = pressure;
+  weatherData[Humidity] = humidity;
+  weatherData[Temperature] = temperature;
 }
 
+//reads in raw GPS Data (DMS in one full number) into the GPSData array by calling the parseCoordinate function
 void readGPSData()
 {
   if (gpsSerial.available() > 0) {
@@ -245,6 +287,7 @@ void readGPSData()
   
 }
 
+//Takes the measured GPGGA data and seperates it into raw GPS Data (DMS in one full number)
 float parseCoordinate(String data, char separator, int index) 
 {
   int commaIndex = 0;
@@ -262,6 +305,7 @@ float parseCoordinate(String data, char separator, int index)
   return coordString.toFloat();
 }
 
+//Converts the stored dms gpa data to DD gps data for diplay purposes.
 float dmsToDd(float coord)
 {
   float degree = floor(coord/100.0);
@@ -270,18 +314,19 @@ float dmsToDd(float coord)
   return degree + minute/60.0 + second/3600.0;
 }
 
+//Delivers the data corresponding to the current state to the given MQTT topic path, then cycles to another data type. 
 void deliver()
 {
   String Data = "";
   switch(state){
     case Pressure:
-      Data = String(weatherData[1]);
+      Data = String(weatherData[Pressure]);
       break;
     case Humidity:
-      Data = String(weatherData[0]);
+      Data = String(weatherData[Humidity]);
       break;
     case Temperature:
-      Data = String(weatherData[2]);
+      Data = String(weatherData[Temperature]);
       break;
     case IP:
       Data = ipAddress;
@@ -304,7 +349,7 @@ void deliver()
           Encoder.write_utf8_string("ST", 2); Encoder.write_integer_value(state, true);
       Encoder.terminate_variable_length_object();
   Encoder.terminate_variable_length_object();
-  client.publish("/test/cbor", (const uint8_t *)(utilstr), Encoder.report_size());
+  client.publish(topicPath, (const uint8_t *)(utilstr), Encoder.report_size());
 
   switch(state){
     case Pressure:
@@ -325,13 +370,15 @@ void deliver()
   }
 }
 
+//Displays the current data to the Serial Monitor
 void displayToSerial()
 {
   float readableGPSData[] = {dmsToDd(GPSData[0]), dmsToDd(-GPSData[1])};
   Serial.println("DeviceID: " + String(id));
-  Serial.println("Humidity: " + String(weatherData[0]));
-  Serial.println("Pressure: " + String(weatherData[1]));
-  Serial.println("Temperature: " + String(weatherData[2]));
-  Serial.println("Latitude: " + String(readableGPSData[0], 2));
-  Serial.println("Longitude: " + String(readableGPSData[1], 2));
+  Serial.println("Device name: " + name);
+  Serial.println("Pressure: " + String(weatherData[Pressure]));
+  Serial.println("Humidity: " + String(weatherData[Humidity]));
+  Serial.println("Temperature: " + String(weatherData[Temperature]));
+  Serial.println("Latitude: " + String(readableGPSData[0]));
+  Serial.println("Longitude: " + String(readableGPSData[1]));
 }
