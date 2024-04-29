@@ -40,8 +40,7 @@ String SSID = "";
 String password = "";
 String name = "";
 String ipAddress = "";
-String GPSData[2] = {"39.86", "-104.99"};
-float rawGPSData[2] = {0.0, 0.0};
+float GPSData[2] = {0.0, 0.0};
 
 // Components
 SoftwareSerial gpsSerial(GPS_RX_PIN,13);
@@ -79,37 +78,35 @@ void setup()
   connectToMQTT();
 }
 
-void loop() {
+void loop() 
+{
   // put your main code here, to run repeatedly:
   checkIfConnected();
   readWeatherData(weatherData);
-  // readGPSData();
-  readRawGPSData();
-  // displayToSerial(id, weatherData, GPSData);
-  displayToSerialRaw(id, weatherData);
-  // if(!GPSData[0].isEmpty()){
-  //   deliver(id, weatherData, GPSData);
-  // }
-  if(!rawGPSData[0] <0.001 && rawGPSData[1] > 0.01 && rawGPSData[0] > 0.01){
-    deliverRaw(id, weatherData, rawGPSData);
+  readGPSData();
+  displayToSerial();
+  if(!GPSData[0] <0.001 && GPSData[1] > 0.01 && GPSData[0] != GPSData[1]){
+    deliver();
   }
   delay(MeasureDelay);
 }
 
-void checkIfConnected(){
+void checkIfConnected()
+{
   if(!client.connected())
     reconnectToMQTT();
   client.loop();
 }
 
-void tempconfig(){
-  
-//temp config
-id = -1;
-SSID = "";
-password = "";
-name = "";
+void tempconfig()
+{
+  //temp config
+  id = 5858;
+  SSID = "";
+  password = "";
+  name = "Elevator Test";
 }
+
 void prompt()
 {
   delay(1000);
@@ -235,46 +232,17 @@ void readWeatherData(float weatherData[])
   weatherData[2] = temperature;
 }
 
-void readRawGPSData()
-{
-  if (gpsSerial.available() > 0) {
-    String sentence = gpsSerial.readStringUntil('\n');
-    if (sentence.startsWith("$GPGGA")) {
-      //Parse the sentence to extract latitude and longitude
-      rawGPSData[0] = parseCoordinate(sentence, ',', 2);
-      rawGPSData[1] = parseCoordinate(sentence, ',', 4);
-    }
-  }
-  
-}
-
 void readGPSData()
 {
   if (gpsSerial.available() > 0) {
     String sentence = gpsSerial.readStringUntil('\n');
     if (sentence.startsWith("$GPGGA")) {
       //Parse the sentence to extract latitude and longitude
-      float latitude = parseCoordinate(sentence, ',', 2);
-      float longitude = parseCoordinate(sentence, ',', 4);
-      int degLat = int(latitude / 100);
-      float minLat = fmod(latitude, 100.0);
-      int degLon = int(longitude / 100);
-      float minLon = fmod(longitude, 100.0);
-      float secLat = (minLat - int(minLat)) * 60.0;
-      float secLon = (minLon - int(minLon)) * 60.0;
-      if(latitude > 0 && longitude > 0){
-        GPSData[0] = String(dms_to_dd(degLat, minLat, secLat));
-        GPSData[1] = String(-dms_to_dd(degLon, minLon, secLon));
-      }
-
+      GPSData[0] = parseCoordinate(sentence, ',', 2);
+      GPSData[1] = parseCoordinate(sentence, ',', 4);
     }
   }
   
-}
-
-float dms_to_dd(float degrees, float minutes, float seconds) {
-    float dd = degrees + (minutes / 60.0) + (seconds / 3600.0);
-    return dd;
 }
 
 float parseCoordinate(String data, char separator, int index) 
@@ -294,29 +262,16 @@ float parseCoordinate(String data, char separator, int index)
   return coordString.toFloat();
 }
 
-void deliver(int ID, float weatherData[], String GPSData[]){
-  Encoder.assign_input_buffer((uint8_t *)(utilstr), 128);
-  char Lat[GPSData[0].length() + 1];
-  GPSData[0].toCharArray(Lat, GPSData[0].length() + 1);
-  char Lon[GPSData[1].length() + 1];
-  GPSData[1].toCharArray(Lon, GPSData[1].length() + 1);
-  Encoder.declare_variable_length_map();
-      Encoder.write_utf8_string("ID", 2); 
-      Encoder.write_integer_value(ID, true);
-      Encoder.write_utf8_string("Measurements", 12);
-      Encoder.declare_variable_length_map();
-          Encoder.write_utf8_string("la", 2); Encoder.write_utf8_string(Lat, sizeof(Lat)-1);
-          Encoder.write_utf8_string("lo", 2); Encoder.write_utf8_string(Lon, sizeof(Lon)-1);
-          Encoder.write_utf8_string("hu", 2); Encoder.write_float_value(weatherData[0]);
-          Encoder.write_utf8_string("pr", 2); Encoder.write_float_value(weatherData[1]);
-          Encoder.write_utf8_string("te", 2); Encoder.write_float_value(weatherData[2]);
-          Encoder.write_utf8_string("ST", 2); Encoder.write_integer_value(0, true);
-      Encoder.terminate_variable_length_object();
-  Encoder.terminate_variable_length_object();
-  client.publish("/test/cbor", (const uint8_t *)(utilstr), Encoder.report_size());
+float dmsToDd(float coord)
+{
+  float degree = floor(coord/100.0);
+  float minute = coord - 100.0 * degree;
+  float second = minute - floor(minute);
+  return degree + minute/60.0 + second/3600.0;
 }
 
-void deliverRaw(int ID, float weatherData[], float rawGPSData[]){
+void deliver()
+{
   String Data = "";
   switch(state){
     case Pressure:
@@ -340,11 +295,11 @@ void deliverRaw(int ID, float weatherData[], float rawGPSData[]){
   Encoder.assign_input_buffer((uint8_t *)(utilstr), 128);
   Encoder.declare_variable_length_map();
       Encoder.write_utf8_string("ID", 2); 
-      Encoder.write_integer_value(ID, true);
+      Encoder.write_integer_value(id, true);
       Encoder.write_utf8_string("Measurements", 12);
       Encoder.declare_variable_length_map();
-          Encoder.write_utf8_string("la", 2); Encoder.write_float_value(rawGPSData[0]);
-          Encoder.write_utf8_string("lo", 2); Encoder.write_float_value(rawGPSData[1]);
+          Encoder.write_utf8_string("la", 2); Encoder.write_float_value(GPSData[0]);
+          Encoder.write_utf8_string("lo", 2); Encoder.write_float_value(GPSData[1]);
           Encoder.write_utf8_string("da", 2); Encoder.write_utf8_string(dataString, sizeof(dataString)-1);
           Encoder.write_utf8_string("ST", 2); Encoder.write_integer_value(state, true);
       Encoder.terminate_variable_length_object();
@@ -370,23 +325,13 @@ void deliverRaw(int ID, float weatherData[], float rawGPSData[]){
   }
 }
 
-
-void displayToSerial(int ID, float weatherData[], String GPSData[])
+void displayToSerial()
 {
+  float readableGPSData[] = {dmsToDd(GPSData[0]), dmsToDd(-GPSData[1])};
   Serial.println("DeviceID: " + String(id));
   Serial.println("Humidity: " + String(weatherData[0]));
   Serial.println("Pressure: " + String(weatherData[1]));
   Serial.println("Temperature: " + String(weatherData[2]));
-  Serial.println("Latitude: " + String(GPSData[0]));
-  Serial.println("Longitude: " + String(GPSData[1]));
+  Serial.println("Latitude: " + String(readableGPSData[0], 2));
+  Serial.println("Longitude: " + String(readableGPSData[1], 2));
 }
-void displayToSerialRaw(int ID, float weatherData[])
-{
-  Serial.println("DeviceID: " + String(id));
-  Serial.println("Humidity: " + String(weatherData[0]));
-  Serial.println("Pressure: " + String(weatherData[1]));
-  Serial.println("Temperature: " + String(weatherData[2]));
-  Serial.println("Latitude: " + String(rawGPSData[0]));
-  Serial.println("Longitude: " + String(rawGPSData[1]));
-}
-
