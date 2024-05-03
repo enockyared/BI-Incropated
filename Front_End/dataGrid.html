@@ -3,84 +3,45 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Device Data Grid</title>
-<style>
-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 25px 0;
-  font-size: 0.9em;
-  font-family: sans-serif;
-  min-width: 400px;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
-}
-
-thead tr {
-  background-color: #009879;
-  color: #ffffff;
-  text-align: left;
-}
-
-th, td {
-  padding: 12px 15px;
-}
-
-tbody tr {
-  border-bottom: 1px solid #dddddd;
-}
-
-tbody tr:nth-of-type(even) {
-  background-color: #f3f3f3;
-}
-
-tbody tr:last-of-type {
-  border-bottom: 2px solid #009879;
-}
-
-tbody tr.active-row {
-  font-weight: bold;
-  color: #009879;
-}
-
-tbody tr:hover {
-  background-color: #f1f1f1;
-  cursor: pointer;
-}
-tbody tr.selected {
-      background-color: #009879; 
-      color: #ffffff; 
-    }
-
-</style>
+<title>Device Readings</title>
+<style>{{{payload.style}}}</style>
 </head>
 <body>
     <div id="map" style="height: 400px; width: 100%;"></div>
-
+    
+    <div id="device-selector">
+      <label for="deviceDropdown">Choose a device:</label>
+      <select id="deviceDropdown" onchange="displayData()">
+      </select>
+    </div>
+    
 <table id="dataGrid">
   <thead>
     <tr>
-      <th>Measurement ID</th>
-      <th>Device ID</th>
-      <th>Type</th>
+      <th>Measurement Type</th>
       <th>Value</th>
-      <th>Timestamp</th>
+      <th>Datetime</th>
       <th>Latitude</th>
       <th>Longitude</th>
+      <th>Deivce</th>
     </tr>
   </thead>
   <tbody>
   </tbody>
 </table>
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBAUdgvJJYnLe4NPR3hRMT347vn6Gt12og&callback=initMap" async defer></script>
+
 <script>
     function initMap() {
       window.map = new google.maps.Map(document.getElementById("map"), {
-        center: { lat: -34.397, lng: 150.644 }, 
-        zoom: 8,
-      });
+      center: { lat: -34.397, lng: 150.644 },
+      zoom: 18, // Zoom needs to be closer to show the 3D effect
+      tilt: 45 // Set the tilt to 45 degrees
+    });
     }
     window.addMarker = function(latitude, longitude) {
       const location = { lat: latitude, lng: longitude };
+      
       const marker = new google.maps.Marker({
         position: location,
         map: window.map,
@@ -88,7 +49,7 @@ tbody tr.selected {
       window.map.setCenter(location);
     }
   </script>
-<script type="module" src="main.mjs"></script>
+<script>{{{payload.script}}}</script>
 
 
 </body>
